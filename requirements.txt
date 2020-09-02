@@ -1,8 +1,4 @@
-imutils
-numpy
-keras
-imageio
-pydot
-opencv-python
-tensorflow
+numpy==1.18.5
+pydot==1.4.1
+tensorflow==2.3.0
 
