@@ -1,3 +1,6 @@
 # ignore pycharm stuff
 venv/*
 .idea/*
+
+# ignore python stuff
+__pycache__
