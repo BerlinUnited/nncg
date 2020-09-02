@@ -1,6 +1,5 @@
-import sys
-from keras import backend as K
-from keras.layers import Convolution2D, MaxPooling2D, Flatten, \
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Flatten, \
     Dropout, BatchNormalization, LeakyReLU, InputLayer, Dense
 
 from .nodes.cnn import *
