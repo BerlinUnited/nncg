@@ -4,7 +4,9 @@ import argparse
 from keras.models import load_model
 from nncg.nncg import NNCG
 from applications.daimler.loader import load_imdb
-
+from pathlib import Path
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
 parser = argparse.ArgumentParser(description='Train the network given ')
 
 parser.add_argument('-b', '--database-path', dest='imgdb_path',
@@ -19,7 +21,7 @@ args = parser.parse_args()
 
 imgdb_path = "img.db"
 model_path = "model.h5"
-code_path = "."
+code_path = str(Path("./output").resolve())
 
 if args.imgdb_path is not None:
     imgdb_path = args.imgdb_path
@@ -29,6 +31,9 @@ if args.model_path is not None:
 
 if args.code_path is not None:
     code_path = args.code_path
+
+if not Path(code_path).exists():
+    Path(code_path).mkdir()
 
 images = load_imdb(imgdb_path)
 model = load_model(model_path, compile=False)

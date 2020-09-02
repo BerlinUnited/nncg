@@ -1,7 +1,7 @@
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Flatten, \
     Dropout, BatchNormalization, LeakyReLU, InputLayer, Dense
-
+from pathlib import Path
 from .nodes.cnn import *
 from .nodes.language import CHeaderNode, CFooterNode
 from .nodes.misc import *
@@ -57,9 +57,9 @@ class NNCG:
         self.testing = testing
 
         if identifier is not None:
-            path = code_path + "/cnn_" + identifier + ".cpp"
+            path = str(Path(code_path) / ("cnn_" + identifier + ".cpp"))
         else:
-            path = code_path
+            path = str(Path(code_path) / "cnn.cpp")
 
         exe_return_filename = "result.txt"
 
@@ -129,6 +129,9 @@ class NNCG:
         print("Generation successful. Testing...")
         tested = 0
         fail = 0
+        print("imdb", type(imdb))
+        print(imdb.shape)
+
         for im in np.random.permutation(imdb):
             if tested > testing:
                 print("\nTest finished.")

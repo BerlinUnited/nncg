@@ -27,7 +27,7 @@ parser.add_argument('-g', '--gain', dest='gain', action='store_true',
 args = parser.parse_args()
 
 imgdb_path = "img.db"
-img_path = "dataset_tools"
+img_path = "db"
 res = {"x": 18, "y": 36}
 
 if args.imgdb_path is not None:
