@@ -55,11 +55,7 @@ class NNCG:
         """
 
         self.testing = testing
-
-        if identifier is not None:
-            path = str(Path(code_path) / ("cnn_" + identifier + ".cpp"))
-        else:
-            path = str(Path(code_path) / "cnn.cpp")
+        path = code_path
 
         exe_return_filename = "result.txt"
 
@@ -129,8 +125,6 @@ class NNCG:
         print("Generation successful. Testing...")
         tested = 0
         fail = 0
-        print("imdb", type(imdb))
-        print(imdb.shape)
 
         for im in np.random.permutation(imdb):
             if tested > testing:

@@ -1,9 +1,12 @@
 from nncg.nncg import NNCG
 from applications.daimler.loader import random_imdb
-from keras.applications.vgg16 import VGG16
-from keras.applications.vgg19 import VGG19
-from keras.layers import Flatten, MaxPooling2D, Convolution2D, Dropout, Dense
-from keras.models import Sequential
+import tensorflow as tf
+from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.applications.vgg19 import VGG19
+from tensorflow.keras.layers import Flatten, MaxPooling2D, Convolution2D, Dropout, Dense
+from tensorflow.keras.models import Sequential
+
+tf.compat.v1.disable_eager_execution()
 
 
 def print_success(name):
@@ -21,7 +24,7 @@ def print_success(name):
 '''.format(name))
 
 
-def no_dense():
+def no_dense_test():
     """
     Tests an example CNN with no dense layer.
     :return: None
@@ -44,7 +47,7 @@ def no_dense():
     print_success('no_dense')
 
 
-def dense_model():
+def dense_test():
     """
     Tests an example CNN with a Dense layer and valid padding.
     :return: None.
@@ -67,27 +70,27 @@ def dense_model():
     print_success('dense_model')
 
 
-def strides():
+def strides_test():
     """
     Tests an example CNN with additional unusual strides.
     :return: None.
     """
     num_imgs = 10
     nncg = NNCG()
-    strides = Sequential()
-    strides.add(Convolution2D(4, (3, 3), input_shape=(101, 101, 1),
-                              activation='relu', padding='same', strides=(3, 3)))
-    strides.add(MaxPooling2D(pool_size=(2, 2)))
-    strides.add(Convolution2D(8, (3, 3), padding='valid', activation='relu', strides=(2, 3)))
-    strides.add(Convolution2D(16, (3, 3), padding='valid', activation='relu'))
-    strides.add(Flatten())
-    strides.add(Dense(2, activation='softmax'))
-    images = random_imdb(num_imgs, strides.input.shape[1:].as_list())
-    nncg.keras_compile(images, strides, 'strides.c')
+    strides_model = Sequential()
+    strides_model.add(Convolution2D(4, (3, 3), input_shape=(101, 101, 1),
+                                    activation='relu', padding='same', strides=(3, 3)))
+    strides_model.add(MaxPooling2D(pool_size=(2, 2)))
+    strides_model.add(Convolution2D(8, (3, 3), padding='valid', activation='relu', strides=(2, 3)))
+    strides_model.add(Convolution2D(16, (3, 3), padding='valid', activation='relu'))
+    strides_model.add(Flatten())
+    strides_model.add(Dense(2, activation='softmax'))
+    images = random_imdb(num_imgs, strides_model.input.shape[1:].as_list())
+    nncg.keras_compile(images, strides_model, 'strides.c')
     print_success('strides')
 
 
-def VGG16_test():
+def vgg16_test():
     """
     Tests a full VGG16.
     :return: None.
@@ -100,7 +103,7 @@ def VGG16_test():
     print_success('VGG16')
 
 
-def VGG19_test():
+def vgg19_test():
     """
     Tests a full VGG19.
     :return: None.
@@ -115,8 +118,8 @@ def VGG19_test():
 
 if __name__ == '__main__':
     # All tests do not need an image database so we just call them.
-    no_dense()
-    dense_model()
-    strides()
-    VGG16_test()
-    VGG19_test()
+    no_dense_test()
+    dense_test()
+    strides_test()
+    vgg16_test()
+    vgg19_test()
