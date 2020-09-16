@@ -52,6 +52,14 @@ class Constant(TreeNode):
         """
         return str(self.c)
 
+    def get_type(self):
+        """
+        Get the type of this constant. It's always float.
+        :return: float
+        """
+        return 'float'
+
+
 
 class Variable(TreeNode):
     """
@@ -94,6 +102,43 @@ class Variable(TreeNode):
         self.pads = _len(dim) * [[0, 0]]
         self.temporal_value = None
 
+    @staticmethod
+    def type_to_c(t) -> str:
+        '''
+        Internal type name to C type name.
+        :param t: The internal name.
+        :return: The C style name.
+        '''
+        type_map = {
+            'float': 'float',
+            'float32': 'float',
+            'float64': 'double',
+            'int8': 'int8_t',
+            'uint8': 'unsigned char',
+            'int16': 'int16_t',
+            '__m128i': '__m128i',
+            'int': 'int'
+        }
+        return type_map[str(t)]
+
+    @staticmethod
+    def type_to_width(t):
+        '''
+        Give the bit width of the internal type name.
+        :param t: The internal type name.
+        :return: The bit width.
+        '''
+        width_map = {
+            'float': 32,
+            'float32': 32,
+            'float64': 64,
+            'int8': 8,
+            'uint8': 8,
+            'int16': 16,
+            'int': 32
+        }
+        return width_map[str(t)]
+
     def __str__(self):
         """
         Get name of Variable (including unique number).
@@ -119,12 +164,38 @@ class Variable(TreeNode):
         """
         return '({}*)'.format(self.type)
 
+    def get_type(self):
+        """
+        Return the type of the data.
+        :return: The type
+        """
+        return self.type
+
     def _get_dim_str(self):
         """
         Get the string for defining an array.
         :return: The string.
         """
+        if self.dim is None:
+            return ''
         return ''.join(['[' + str(i + j[0] + j[1]) + ']' for i, j in zip(np.atleast_1d(self.dim), self.pads)])
+
+    @staticmethod
+    def format_value(v, dtype: np.dtype):
+        '''
+        Give a string for writing this value.
+        :param v: The value.
+        :param dtype: The datatype of the value.
+        :return: The formatted string.
+        '''
+        if dtype == 'float32':
+            return np.format_float_scientific(v, precision=15)
+        elif dtype == 'int8':
+            return str(v)
+        elif dtype == 'int16':
+            return str(v)
+        else:
+            raise Exception("Unknown data type.")
 
     def get_def(self, write_init_data=True):
         """
@@ -136,10 +207,12 @@ class Variable(TreeNode):
             return
         self.dim_str = self._get_dim_str()
         if self.init_data is not None and write_init_data:
-            self.data_str = ','.join([np.format_float_scientific(f, precision=15) for f in (self.init_data.flatten())])
+            self.data_str = ','.join([Variable.format_value(f, self.init_data.dtype)
+                                      for f in (self.init_data.flatten())])
         else:
             self.data_str = '0'
-        return 'static {type} {name}_{index} {alignment} {dim_str} = {{ {data_str} }};\n'.format(**self.__dict__)
+        self.var_type = Variable.type_to_c(self.type)
+        return 'static {var_type} {name}_{index} {alignment} {dim_str} = {{ {data_str} }};\n'.format(**self.__dict__)
 
     def get_pointer_decl(self):
         """
@@ -176,6 +249,13 @@ class IndexedVariable(TreeNode):
         self.add_edge('var', var)
         self.padding_to_offset = padding_to_offset
 
+    def get_type(self):
+        """
+        Return the type of the Variable that is indexed here.
+        :return: The type as string.
+        """
+        return self.get_node('var').get_type()
+
     def set_indices(self, indices: List[TreeNode]):
         """
         Set new indices.
@@ -184,6 +264,22 @@ class IndexedVariable(TreeNode):
         """
         for i, idx in zip(indices, range(len(indices))):
             self.add_edge(str(idx), i, n_type='index')
+
+    def transpose(self, idx, include_data=True):
+        '''
+        Tranpose the multidimensional matrix.
+        :param idx: New index order, comparable to tranpose of an ndarray.
+        :param include_data: Also transpose the initial data?
+        :return:  None.
+        '''
+        if include_data:
+            self.get_node('var').init_data = self.get_node('var').init_data.transpose(idx)
+        old_idxs = []
+        for i in idx:
+            old_idxs.append(self.get_node(str(idx[i])))
+        for i in range(len(idx)):
+            self.add_edge(str(i), old_idxs[idx[i]], n_type='index', replace=True)
+        self.get_node('var').dim = [self.get_node('var').dim[idx[i]] for i in range(len(idx))]
 
     def __str__(self):
         """

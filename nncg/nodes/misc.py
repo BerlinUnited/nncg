@@ -1,11 +1,12 @@
 from __future__ import annotations
 import os
 import sys
-import numpy as np
 from numpy import unravel_index
 from nncg.writer import Writer
 from nncg.nodes.expressions import *
 from nncg.traverse.tree import TreeNode
+from nncg.nodes.expressions import Variable
+
 
 class Writable(TreeNode):
     """
@@ -36,6 +37,9 @@ class Node(Writable):
     Base class for nodes.
     """
     arch = 'general'
+    var_decls = List[Variable]
+    const_decls = List[Variable]
+    pointer_decls = List[Variable]
 
     def __init__(self, prev_node: TreeNode = None, name: str = 'next'):
         """
@@ -44,6 +48,10 @@ class Node(Writable):
         :param name: Connects to the previous node with an edge with this name.
         """
         super().__init__()
+        self.var_decls = []
+        self.const_decls = []
+        self.pointer_decls = []
+        self.math_required = False
         if prev_node is not None:
             prev_node.add_edge(name, self)
 
@@ -63,11 +71,69 @@ class Node(Writable):
         return node_type is None or type(self) is node_type
 
 
-class TestNode(Node):
+class AlternativesNode(Node):
+    """
+    Base class for nodes that have multiple alternative paths. There will be one active path called content and this
+    path is written to C code. All other paths can be selected to be active if desired. Furthermore, when performing
+    optimizations and other graph traversing actions all alternatives can be processed. Afterwards can be decided, which
+    one will be selected to be written.
+    """
+    def __init__(self, orig_node: Node, prev_node: TreeNode = None, name: str = 'next'):
+        '''
+        Init the node.
+        :param orig_node: This node will be the initial content.
+        :param prev_node: The previous node.
+        :param name: Connects to the previous node with an edge with this name.
+        '''
+        super().__init__(prev_node, name)
+        self.takeover_in_edges_from(orig_node)
+        self.add_edge('content', orig_node, n_type='original')
+        self.orig_node = orig_node
+
+    def add_alternative(self, node: Node):
+        '''
+        Add an alternative node as content. Will not be selected as active automatically.
+        :param node: The node to be added.
+        :return: None.
+        '''
+        self.add_edge('content', node, n_type='alternative')
+
+    def add_copy_from_orig(self):
+        '''
+        Copy the currently active content and add it as an alternative. Useful to perform operations on a path
+        and keeping the original.
+        :return: None.
+        '''
+        orig_copy = self.get_orig_node().copy()
+        self.add_alternative(orig_copy)
+
+    def select(self, node):
+        '''
+        Selects a node as active content. The node must already be an existing alternative node within this
+        AlternativeNode.
+        :param node: The node to be selected as active.
+        :return: None
+        '''
+        prev_selected = self.get_node('content')
+        e = self.get_edges_to(node)
+        assert len(e) == 1
+        e[0].remove()
+        self.add_edge('content', node, replace=True)
+        self.add_edge('content', prev_selected, n_type='alternative')
+
+    def get_orig_node(self):
+        '''
+        Get the Node that is currently active.
+        :return: The active Node.
+        '''
+        return self.get_node_by_type('original')[0]
+
+
+class KerasLayerNode(Node):
     """
     A node that automatically tests the input of this node (output of previous node). keras_compile() will
     use the provided images (imdb) to get the results of all Keras layers. Additionally, the compiled executable
-    will also do the inference on the same images and this TestNode writes the results to files. Afterwards,
+    will also do the inference on the same images and this KerasLayerNode writes the results to files. Afterwards,
     the results are compared.
     """
     in_var: Variable
@@ -75,7 +141,7 @@ class TestNode(Node):
 {{
     FILE *f = fopen("{var_name}", "wb");
     for (int i = 0; i < {num}; i++)
-        fprintf(f, "%e\\n", ((float*){var_name})[i]);
+        fprintf(f, "%8.8e\\n", ((float*){var_name})[i]);
     fclose(f);
 }} 
 #endif
@@ -107,7 +173,7 @@ class TestNode(Node):
         self.num = np.prod(self.in_var.dim + np.sum(self.in_var.pads, 1))
         super().write_c()
 
-    def test(self, im):
+    def test(self, im, exit_on_err):
         """
         Perform the test using the provided image.
         :param im: The image as 4 dimensional array comparable to Keras.
@@ -146,7 +212,8 @@ class TestNode(Node):
         else:
             raise Exception("Unimplemented")
 
-        if not np.allclose(res, c_res, atol=0.000001):  # We have to allow a small error due to rounding errors
+        if exit_on_err and not np.allclose(res, c_res,
+                                           atol=0.00001 * np.max(res)):  # We have to allow a small error due to rounding errors
             print("Check of variable {} for layer {}.".format(self.in_var, self.layer_name))
             idx = unravel_index(np.argmax(res - c_res), res.shape)
             print('Largest error {} at {} ({}).'.format(np.max(res - c_res), idx, np.argmax(res - c_res)))
@@ -154,6 +221,8 @@ class TestNode(Node):
             sys.exit(4)
         else:
             os.remove(self.var_name)
+
+        return res, c_res
 
 
 class ExpressionNode(Node):

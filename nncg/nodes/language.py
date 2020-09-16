@@ -18,6 +18,7 @@ class CHeaderNode(Node):
 #include <pmmintrin.h>
 #include <tmmintrin.h>
 #include <immintrin.h>
+#include <xmmintrin.h>
     '''
 
     math_include = '#include <math.h>\n'
@@ -37,6 +38,20 @@ void init_weight_float(float* w, int len, const char* name)
 {{
     FILE *f = fopen(name, "rb");
     fread(w, sizeof(float), len, f);
+    fclose(f);
+}}
+
+void init_weight_int8(int8_t* w, int len, const char* name)
+{{
+    FILE *f = fopen(name, "rb");
+    fread(w, sizeof(int8_t), len, f);
+    fclose(f);
+}}
+
+void init_weight_int16(int16_t* w, int len, const char* name)
+{{
+    FILE *f = fopen(name, "rb");
+    fread(w, sizeof(int16_t), len, f);
     fclose(f);
 }}
 
@@ -152,7 +167,16 @@ void init_weights()
             self.snippet += v.get_def(self.direct).replace('{', '{{').replace('}', '}}')
             if self.stdio:
                 # In this case the weights are later loaded from file.
-                weight_snippet += '\tinit_weight_float((float*){}, {}, "{}");\n'.format(str(v), np.prod(v.dim), str(v))
+                var_type = Variable.type_to_c(v.type)
+                if var_type == 'float':
+                    func_name='init_weight_float'
+                elif var_type == 'int8_t':
+                    func_name = 'init_weight_int8'
+                elif var_type == 'int16_t':
+                    func_name = 'init_weight_int16'
+                else:
+                    assert False
+                weight_snippet += '\t{}(({}*){}, {}, "{}");\n'.format(func_name, var_type, str(v), np.prod(v.dim), str(v))
                 Writer.write_data(v.init_data, str(v))
         if self.stdio:
             self.snippet += self.weights_init_stdio.format(weight_snippet).replace('{', '{{').replace('}', '}}')

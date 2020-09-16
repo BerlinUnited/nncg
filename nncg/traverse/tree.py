@@ -53,7 +53,7 @@ class TreeNode:
         """
         Giving a short type. It's a string of the type of the node but as Python also gives the complete 'path'
         when nodes inherit we remove this.
-        :return:
+        :return: The string.
         """
         n = str(type(self))
         return n[n.rindex('.') + 1:-2]
@@ -81,17 +81,41 @@ class TreeNode:
 
     def get_node(self, name) -> TreeNode:
         """
-        Get the target of the edge with this name. As the name is unique (probably due to trailing stars) it is
-        a single node.
+        Get the target of the edge with this name. See get_edge() for more details.
         :param name: Name of the edge.
         :return: The node that is the target of the edge.
         """
+        return self.get_edge(name).target
+
+    def get_edge(self, name) -> Edge:
+        """
+        Get the Edge with the given name. Gives an exception if an Edge with that name does not exist. Name of
+        edges may have trailing * as names must be unique. If there is only one Edge of that name but with trailing
+        * that edge will be returned. If there are more than one Edge with that name and different numbers of *
+        the exact name with all * must be given.
+        :param name: Name of the Edge.
+        :return: The edge.
+        """
         if name in self.edges.keys():
-            return self.edges[name].target
-        more_results = [n for n in self.edges.keys() if '!content' in n]
-        if len(more_results) == 1:
-            return self.edges[more_results[0]].target
-        raise
+            return self.edges[name]
+        #       Probably due to graph operations there could be single edge with that name but with trailing *.
+        #       In this case that edge should be returned. Or the one that comes next regarding number of *.
+        candidates = []
+        for k in self.edges.keys():
+            if self.edges[k].name_equal(name):
+                candidates.append(k)
+        if len(candidates) == 0:
+            raise
+        else:
+            return self.edges[candidates[0]]
+
+    def get_edges_to(self, node) -> List[Edge]:
+        '''
+        Get a list of edges pointing to the given Node.
+        :param node: The Node.
+        :return:
+        '''
+        return [e for e in self.edges.values() if e.target == node]
 
     def get_node_by_type(self, n_type) -> List[TreeNode]:
         """
@@ -108,7 +132,15 @@ class TreeNode:
         :param name: Name of Edge.
         :return: True or False.
         """
-        return self.edges.get(name) is not None
+        if name in self.edges.keys():
+            return True
+        candidates = []
+        for k in self.edges.keys():
+            if self.edges[k].name_equal(name):
+                candidates.append(k)
+        if len(candidates) != 1:
+            return False
+        return True
 
     def edge_num_by_type(self, n_type):
         """
@@ -159,8 +191,8 @@ class TreeNode:
 
     def replace_self_with_path(self, first_node: TreeNode, last_node: TreeNode):
         """
-        Searches for all Edges to target this node and then replaces this node by the first node. All outgoing
-        node (not "inverse" Edges) of this node are added to the last node.
+        Searches for all Edges to this node and then replaces this node by the first node. All outgoing
+        Edges (not "inverse" Edges) of this node are added to the last node.
         :param first_node: Node where all incoming Edges will point to.
         :param last_node: Node to add to all outgoing Edges.
         :return: None.
@@ -264,14 +296,21 @@ class TreeNode:
 
     def traverse(self, action: TraverseAction):
         """
-        Start a traverse action at this node by calling traverse on all Edges.
+        Start a traverse action at this node by calling traverse on all Edges. Note that the order of traversing
+        multiple edges depends on the order they were inserted. You may use a different type of dict class
+        to get a different behaviour.
         :param action: The action to execute while visiting die Edges.
         :return: None.
         """
+        from nncg.quantization import QuantizedNode
+        from nncg.traverse.actions.lower import LowerAction
         if action.traverse_edges is None:
             edges = self.not_inverse_edges()
-        else:
-            edges = [self.edges[n] for n in action.traverse_edges if n in self.edges.keys()]
+        elif type(action.traverse_edges) is list:
+            edges = [self.get_edge(n) for n in action.traverse_edges if self.has_edge(n)]
+        else:  # Now assume it is a lambda
+            edges = [n for n in self.edges.values() if action.traverse_edges(n)]
+
         for e in edges:
             e.traverse(action)
 
@@ -283,14 +322,24 @@ class TreeNode:
         self.remove_in_edges()
         self.remove_out_edges()
 
-    def plot_graph(self, path):
+    def plot_graph(self, path, level=0):
         """
         Save a pydot plot of the graph starting at this node.
         :param path: Save the plot here.
+        :param level: How many details should be plotted? Level 0 show less details, level 2 all.
         :return: None.
         """
         graph = pydot.Dot(graph_type='digraph')
         action = AddToPydot(graph)
+        if level == 0:  # At level 0 just plot CNN nodes and nodes for code.
+            action.traverse_edges = ['content', 'next']
+        elif level == 1:  # Now additionally add alternatives
+            incl_alternatives = lambda n: n.name_equal('next') or n.name_equal('content') or n.n_type == 'alternative'
+            action.traverse_edges = incl_alternatives
+        elif level == 2:  # Do not provide anything so that everything will be followed
+            action.traverse_edges = None
+        else:
+            print("Unknown print level.")
         self.traverse(action)
         graph.write_png(path)
 
@@ -332,6 +381,9 @@ class Edge:
         """
         return self.target
 
+    def name_equal(self, name):
+        return self.name.find(name) == 0
+
     def add_inverse_edge(self):
         """
         Create the "inverse" Edge to this Edge.
@@ -359,7 +411,7 @@ class Edge:
 
     def replace_target_with_path(self, first_node: TreeNode, last_node: TreeNode):
         """
-        Replaces the target of this node with first_node. Then sets for all outgoing Edges of the old target
+        Replaces the target of this edge with first_node. Then sets for all outgoing Edges of the old target
         last_node as new owner. Does not touch other Edges pointing to the old target.
         :param first_node: First node of path as replacement.
         :param last_node: Last node of path as replacement.
@@ -379,13 +431,14 @@ class Edge:
         if self.inverse.owner.edges.get(self.inverse.name) == self.inverse:
             del self.inverse.owner.edges[self.inverse.name]
 
-    def insert_node(self, target: TreeNode):
+    def insert_node(self, node: TreeNode):
         """
-        Inserts
-        :param target:
-        :return:
+        Inserts between this Edge and the current target of this Edge the given node, i.e. set the node as
+        the new target and add a new Edge with the same name from the node to current target.
+        :param node: The node to be inserted.
+        :return: None.
         """
-        self.insert_path(target, target)
+        self.insert_path(node, node)
 
     def insert_path(self, first_node: TreeNode, last_node: TreeNode):
         """
@@ -396,7 +449,7 @@ class Edge:
         :return: None.
         """
         last_node.add_edge(self.name, self.target, self.n_type)
-        self.replace_target_with_path(first_node, last_node)
+        self.set_target(first_node)
 
     def traverse(self, action):
         """
